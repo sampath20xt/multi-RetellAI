@@ -1,0 +1,204 @@
+### **Complete Workflow to Build a Multi-Prompt Agent for Order Lookup in Retell AI**
+This workflow will guide you through **setting up a multi-prompt agent** in **Retell AI** that handles order lookup using a **Knowledge Base (or a Custom Function)**, manages order delays, reschedules, and provides notifications.
+
+---
+
+## **📌 Step 1: Set Up Your Multi-Prompt Agent**
+1. **Go to Retell AI Dashboard** → **Create New Agent**.
+2. **Select Multi-Prompt Agent**.
+3. **Define the System Prompt** (this applies globally):
+   ```
+   You are a professional, empathetic Customer Service Representative (CSR) handling inbound and outbound calls with drivers about their scheduled deliveries.
+   Your responsibilities include:
+   - Helping drivers look up their orders.
+   - Gathering information for delivery delays.
+   - Requesting reschedule approvals from shippers.
+   - Updating drivers with new appointment details.
+   - Sending follow-up SMS and email notifications.
+   Keep conversations friendly, clear, and efficient.
+   ```
+
+---
+
+## **📌 Step 2: Build the Conversation Flow**
+You'll create **Nodes & Edge Conditions** to guide the conversation logically.
+
+### **1️⃣ Greeting & Identification (Starting State)**
+- **Node Name:** `Greeting_Node`
+- **Prompt:**
+  ```
+  "Hi, this is [Agent Name], your delivery support agent from [Company Name]. This call is being recorded for quality and training purposes.
+  May I have your Order ID or Load Number to assist you today?"
+  ```
+- **Edge Conditions:**
+  - ✅ If driver provides **Order ID** → Go to `Order_Lookup_Node`
+  - ❌ If driver doesn’t know Order ID → Go to `Alternate_Lookup_Node`
+
+---
+
+### **2️⃣ Order Lookup (Using Knowledge Base or Custom Function)**
+- **Node Name:** `Order_Lookup_Node`
+- **Prompt:**
+  ```
+  "Thank you! Let me look up the details for Order ID: {order_id}. One moment..."
+  ```
+- **Add a Function for Order Lookup**
+  1. Click **"+ Add"** under **Tools (Optional)**.
+  2. Select **Custom Function**.
+  3. Define function to fetch order details:
+     ```json
+     {
+       "function": "fetch_order_details",
+       "parameters": {
+         "order_id": "{user_input}"
+       }
+     }
+     ```
+  4. Save the function.
+
+- **Edge Conditions:**
+  - ✅ If **order is found** → Go to `Reason_for_Call_Node`
+  - ❌ If **order is NOT found** → Go to `Alternate_Lookup_Node`
+
+---
+
+### **3️⃣ Alternate Lookup (If No Order ID)**
+- **Node Name:** `Alternate_Lookup_Node`
+- **Prompt:**
+  ```
+  "No problem! I can search by delivery location, driver name, or truck number. Please provide any of these."
+  ```
+- **Edge Conditions:**
+  - ✅ If driver provides info → **Retry Order Lookup**
+  - ❌ If insufficient info → Go to `Unable_to_Locate_Order_Node`
+
+---
+
+### **4️⃣ Reason for Call (Main Action Node)**
+- **Node Name:** `Reason_for_Call_Node`
+- **Prompt:**
+  ```
+  "I see your delivery is scheduled for [current date and time]. What can I help you with today? Are you calling about a delay, reschedule request, or something else?"
+  ```
+- **Edge Conditions:**
+  - 🚛 If **driver mentions delay** → Go to `Delay_Reason_Collection_Node`
+  - 📆 If **rescheduling directly** → Go to `Reschedule_Confirmation_Process_Node`
+  - ❓ If **general inquiry** → Go to `General_Inquiry_Node`
+
+---
+
+### **5️⃣ Handling Delays**
+- **Node Name:** `Delay_Reason_Collection_Node`
+- **Prompt:**
+  ```
+  "Got it — can you tell me the reason for the delay? For example: traffic, mechanical issues, weather, or something else?"
+  ```
+- **Edge Conditions:**
+  - ✅ Once reason is provided → Go to `Update_Delay_in_System_Node`
+
+- **Node Name:** `Update_Delay_in_System_Node` (Function Node)
+  - **Function:** Update the system with delay reason.
+  - **After function runs:** → Notify Shipper for Reschedule (`Notify_Shipper_Node`).
+
+---
+
+### **6️⃣ Reschedule Process**
+- **Node Name:** `Notify_Shipper_Node`
+- **Function:** Notify the shipper (via email, SMS, or API call) for reschedule approval.
+- **Edge Conditions:**
+  - ✅ If **shipper confirms** → Go to `Confirm_New_Appointment_Node`
+  - ❌ If **shipper rejects** → Loop back to `Reschedule_Confirmation_Process_Node`
+
+- **Node Name:** `Confirm_New_Appointment_Node`
+  - **Prompt:**
+    ```
+    "The shipper has confirmed a new delivery appointment for [new date and time]. Does this work for you?"
+    ```
+  - **Edge Conditions:**
+    - ✅ If driver confirms → `Send_Confirmation_Notification_Node`
+    - ❌ If driver rejects → Loop back to `Reschedule_Confirmation_Process_Node`
+
+- **Node Name:** `Reschedule_Confirmation_Process_Node`
+  - **Prompt:**
+    ```
+    "Let’s find a better time. When would you be available for delivery?"
+    ```
+  - **Edge Conditions:**
+    - 📅 Collect new time → Retry `Notify_Shipper_Node`
+
+---
+
+### **7️⃣ Sending Confirmation Notifications**
+- **Node Name:** `Send_Confirmation_Notification_Node`
+- **Function:** Send SMS + email confirmation with new appointment details.
+
+---
+
+### **8️⃣ General Inquiry Handling**
+- **Node Name:** `General_Inquiry_Node`
+- **Prompt:**
+  ```
+  "What would you like to know about your delivery today? I can help with delivery times, locations, or general order status."
+  ```
+- **Edge Conditions:**
+  - ✅ If the inquiry is answered → `Wrap_Up_Call_Node`
+
+---
+
+### **9️⃣ Unable to Locate Order**
+- **Node Name:** `Unable_to_Locate_Order_Node`
+- **Prompt:**
+  ```
+  "I’m having trouble finding your order with the info provided. Could you please double-check your Order ID, delivery location, or driver details?"
+  ```
+- **Edge Conditions:**
+  - ✅ If new info is given → Retry Lookup.
+  - ❌ If still no match → Go to `Escalation_Offer_Node`.
+
+---
+
+### **🔟 Escalation Handling**
+- **Node Name:** `Escalation_Offer_Node`
+- **Prompt:**
+  ```
+  "I’m sorry we couldn’t locate your order. Would you like me to transfer you to a live representative?"
+  ```
+- **Edge Conditions:**
+  - ✅ If **yes** → Transfer to live agent.
+  - ❌ If **no** → `Wrap_Up_Call_Node`
+
+---
+
+### **✅ Wrap Up the Call**
+- **Node Name:** `Wrap_Up_Call_Node`
+- **Prompt:**
+  ```
+  "Thanks for calling [Company Name]! If you need anything else, just give us a ring. Drive safe!"
+  ```
+- **Edge Condition:** Call ends.
+
+---
+
+## **📌 Step 3: Test & Deploy**
+### **1. Test the Agent**
+- Use the **Test LLM** and **Test Audio** features in Retell AI.
+- Simulate different cases (valid order, missing order, delay, reschedule, etc.).
+
+### **2. Debug & Optimize**
+- If issues occur, check:
+  - **Edge conditions** (are the transitions correct?).
+  - **Function executions** (is order lookup working?).
+  - **Response accuracy** (is the agent clear and helpful?).
+
+### **3. Deploy the Agent**
+- Once tested, **deploy** your agent for live use.
+
+---
+
+## **🎯 Final Thoughts**
+✅ Uses **multi-prompt structured flow** for better control.  
+✅ **Leverages Knowledge Base** via a **Custom Function** for order lookup.  
+✅ Handles **delays, reschedules, and escalations smoothly**.  
+✅ **Automates notifications** for driver updates.  
+
+Let me know if you need **fine-tuning or debugging help**! 🚀
